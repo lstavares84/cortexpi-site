@@ -9,7 +9,7 @@
 (function(){
 'use strict';
 const KEYS = ['c', 'p', 'i'];      // teclas que precisam estar pressionadas juntas
-const GATEWAY_URL = '';            // portal SSH (definir depois); vazio = a animação termina sem navegar
+const GATEWAY_URL = 'https://gamma.cortexpi.com.br';   // portal real: Cloudflare Access (PIN por e-mail) → login, senha e código do dia no gamma
 const WINDOW_MS = 400;             // intervalo máximo entre as três teclas
 let win = null;
 const C = {bg:'#030a04', bar:'#071007', panel:'#0a1a0b', line:'#234b23', fg:'#e6ffe1', dim:'#6eaa6e', com:'#3f7a3f',
@@ -71,8 +71,8 @@ function frame(title, variant = ''){
   if (!styled){ const s = document.createElement('style'); s.textContent = CSS; document.head.appendChild(s); styled = true; }
   const back = document.createElement('div'); back.className = 'ta-back';
   back.innerHTML = `<div class="ta ${variant}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
-    <div class="ta-h"><span>Terminal ${esc(title)}</span><span class="bt"><button type="button" aria-label="Minimizar">[_]</button><button type="button" aria-label="Maximizar">[□]</button><button type="button" class="x" aria-label="Fechar">[×]</button></span></div>
-    <div class="ta-b"></div><div class="ta-status"><span class="st-l">conectando…</span><span class="st-r"></span></div></div>`;
+    <div class="ta-h"><span class="ttl">Terminal ${esc(title)}</span><span class="bt"><button type="button" aria-label="Minimize">[_]</button><button type="button" aria-label="Maximize">[□]</button><button type="button" class="x" aria-label="Close">[×]</button></span></div>
+    <div class="ta-b"></div><div class="ta-status"><span class="st-l">connecting…</span><span class="st-r"></span></div></div>`;
   document.body.appendChild(back);
   let alive = true;
   const close = () => { alive = false; back.remove(); document.removeEventListener('keydown', onKey); };
@@ -80,7 +80,7 @@ function frame(title, variant = ''){
   document.addEventListener('keydown', onKey);
   back.querySelectorAll('.ta-h button').forEach(b => b.addEventListener('click', close));
   back.addEventListener('mousedown', e => { if (e.target === back) close(); });
-  return {back, body: back.querySelector('.ta-b'), status: (l, r) => { if (l != null) back.querySelector('.st-l').innerHTML = l; if (r != null) back.querySelector('.st-r').innerHTML = r; }, alive: () => alive, close};
+  return {back, body: back.querySelector('.ta-b'), title: s => { back.querySelector('.ttl').textContent = 'Terminal ' + s; back.querySelector('.ta').setAttribute('aria-label', s); }, status: (l, r) => { if (l != null) back.querySelector('.st-l').innerHTML = l; if (r != null) back.querySelector('.st-r').innerHTML = r; }, alive: () => alive, close};
 }
 
 /* digitação linha a linha num elemento de texto */
@@ -98,7 +98,6 @@ function typer(el, w){
     await wait(pause);
   };
 }
-const PROMPT = '<span class="u">lucas@cortexpi</span>:~$ ';
 
 /* ================================================================ FAVO GIRADO (sentido do Turzx)
    Hexágono de ponta para cima (reator.hexagon: início em -90°), estágios em sentido horário a partir do topo.
@@ -112,22 +111,23 @@ async function geo(){
     const r = await fetch('https://ipwho.is/', {signal: ctl.signal, cache: 'no-store'}); clearTimeout(tm);
     const j = await r.json(); if (!j.success) throw 0;
     geoCache = {ip: j.ip, lat: j.latitude, lon: j.longitude, city: [j.city, j.region_code].filter(Boolean).join('/'),
-                isp: (j.connection && (j.connection.isp || j.connection.org)) || 'provedor', asn: j.connection && j.connection.asn ? 'AS' + j.connection.asn : '',
+                isp: (j.connection && (j.connection.isp || j.connection.org)) || 'ISP', asn: j.connection && j.connection.asn ? 'AS' + j.connection.asn : '',
                 rtt: Math.round(performance.now() - t0), real: true};
   } catch {
     const v = await visitorIP();
-    geoCache = {ip: v.ip, lat: null, lon: null, city: '', isp: 'provedor de origem', asn: '', rtt: Math.round(performance.now() - t0), real: v.real};
+    geoCache = {ip: v.ip, lat: null, lon: null, city: '', isp: 'source ISP', asn: '', rtt: Math.round(performance.now() - t0), real: v.real};
   }
   return geoCache;
 }
-const fmtLL = g => g.lat == null ? 'localização indisponível' : `${g.lat.toFixed(2)}, ${g.lon.toFixed(2)}`;
+const fmtLL = g => g.lat == null ? 'location unavailable' : `${g.lat.toFixed(2)}, ${g.lon.toFixed(2)}`;
 const STG = g => [
-  {n: 'Origem',              s: g.ip + (g.real ? '' : ' (ex.)'), s2: fmtLL(g), log: `origem ${g.ip} · ${fmtLL(g)}${g.city ? ' · ' + g.city : ''}`},
-  {n: 'Provedor de origem',  s: g.isp.length > 22 ? g.isp.slice(0, 21) + '…' : g.isp, s2: g.asn, log: `provedor ${g.isp}${g.asn ? ' · ' + g.asn : ''}`},
-  {n: 'Acesso à internet',   s: `rtt ${g.rtt} ms`, s2: 'rota pública', log: `internet alcançada · rtt ${g.rtt} ms`},
-  {n: 'Túnel Gamma Network', s: 'túnel ativo', s2: 'wireguard', log: 'túnel com a Gamma Network estabelecido'},
-  {n: 'Firewall',            s: 'login · senha · código', s2: '', log: 'firewall: autenticação solicitada'},
-  {n: 'Criptografia',        s: 'x25519 · aes-256-gcm', s2: '', log: 'comunicação criptografada de ponta a ponta'}];
+  {n: 'Origin',              s: g.ip + (g.real ? '' : ' (sample)'), s2: fmtLL(g), log: `origin ${g.ip} · ${fmtLL(g)}${g.city ? ' · ' + g.city : ''}`},
+  {n: 'Source ISP',          s: g.isp.length > 22 ? g.isp.slice(0, 21) + '…' : g.isp, s2: g.asn, log: `ISP ${g.isp}${g.asn ? ' · ' + g.asn : ''}`},
+  {n: 'Internet access',     s: `rtt ${g.rtt} ms`, s2: 'public route', log: `internet reached · rtt ${g.rtt} ms`},
+  {n: 'Gamma Network tunnel', s: 'tunnel up', s2: 'wireguard', log: 'tunnel to Gamma Network established'},
+  {n: 'Firewall',            s: 'login · password · code', s2: '', log: 'firewall: authentication required'},
+  {n: 'Encryption',          s: 'x25519 · aes-256-gcm', s2: '', log: 'end-to-end encrypted channel'}];
+const LOGIN = 'lucas';   // usuário digitado no painel (animação); só aparece depois da autenticação
 
 /* tela de autenticação do firewall: só animação, sem campos reais */
 async function loginPanel(w, host){
@@ -137,9 +137,9 @@ async function loginPanel(w, host){
   ov.style.cssText = `position:absolute;inset:0;z-index:5;background:rgba(2,6,3,.96);display:flex;align-items:center;justify-content:center;overflow:hidden`;
   ov.innerHTML = `<pre aria-hidden="true" style="position:absolute;inset:0;margin:0;font:11px/1.25 ${MONO_I};color:#0d250e;white-space:pre;overflow:hidden">${noise}</pre>
     <div style="position:relative;width:min(440px,90%);background:#000;border:1px solid ${C.line}">
-      <div style="height:26px;border-bottom:1px solid ${C.line};display:flex;align-items:center;justify-content:space-between;padding:0 10px;font:600 12px ${MONO_I};color:${C.fg}"><span>firewall cortexpi · autenticação</span><span style="color:${C.dim}">[×]</span></div>
+      <div style="height:26px;border-bottom:1px solid ${C.line};display:flex;align-items:center;justify-content:space-between;padding:0 10px;font:600 12px ${MONO_I};color:${C.fg}"><span>cortexpi firewall · authentication</span><span style="color:${C.dim}">[×]</span></div>
       <div style="padding:20px 22px 18px;font:13px ${MONO_I}">
-        ${['USUÁRIO', 'SENHA', 'CÓDIGO DO DIA'].map((l, i) => `<div style="font:800 15px ${MONO_I};color:${C.green};letter-spacing:.04em;margin:${i ? 14 : 0}px 0 6px">${l}:</div>
+        ${['USERNAME', 'PASSWORD', 'DAILY CODE'].map((l, i) => `<div style="font:800 15px ${MONO_I};color:${C.green};letter-spacing:.04em;margin:${i ? 14 : 0}px 0 6px">${l}:</div>
           <div class="f" style="height:40px;border:1.5px solid ${C.line};background:${C.bar};display:flex;align-items:center;justify-content:center;font:700 18px ${MONO_I};letter-spacing:.12em;color:${C.fg}"></div>`).join('')}
         <div class="ok" style="margin-top:16px;min-height:20px;text-align:center;font:800 13px ${MONO_I};letter-spacing:.08em"></div></div></div>`;
   host.appendChild(ov);
@@ -147,11 +147,11 @@ async function loginPanel(w, host){
   const type = async (el, txt, col, focusCol) => { el.style.borderColor = focusCol; el.style.color = col;
     for (const ch of txt){ if (!w.alive()) return; el.textContent += ch; await wait(150); } el.style.borderColor = C.line; await wait(350); };
   await wait(700);
-  await type(fu, 'lucas', C.green, C.frost);          // usuário = verde (regra de cor)
+  await type(fu, LOGIN, C.green, C.frost);          // usuário = verde (regra de cor)
   await type(fp, '**********', C.fg, C.frost);
   await type(fc, '******', C.fg, C.frost);
-  ok.style.color = C.frost; ok.textContent = 'verificando…'; await wait(1300);
-  ok.style.color = C.green; ok.textContent = '✓ CREDENCIAIS APROVADAS'; await wait(1600);
+  ok.style.color = C.frost; ok.textContent = 'verifying…'; await wait(1300);
+  ok.style.color = C.green; ok.textContent = '✓ CREDENTIALS APPROVED'; await wait(1600);
   await fade(ov, 1, 0, 350); ov.remove();
 }
 
@@ -189,11 +189,11 @@ function hexStage(svg, cx, cy, R, compact){
 }
 async function authorized(w, el){
   const t = typer(el, w);
-  await t('<span class="g">acesso autorizado · sessão criptografada com gamma</span>', {speed: 8});
-  el.insertAdjacentHTML('beforeend', '<span class="u">lucas@gamma</span>:~$ <span class="ta-cur"></span>');
-  w.status('<span class="ok">AUTORIZADO</span>sessão segura com gamma', GATEWAY_URL ? 'Enter conecta · Esc fecha' : 'Esc fecha');
+  await t('<span class="g">access granted · encrypted session with gamma</span>', {speed: 8});
+  el.insertAdjacentHTML('beforeend', `<span class="u">${LOGIN}@gamma</span>:~$ <span class="ta-cur"></span>`);
+  w.status('<span class="ok">GRANTED</span>secure session with gamma', GATEWAY_URL ? 'Enter to connect · Esc to close' : 'Esc to close');
   if (GATEWAY_URL) document.addEventListener('keydown', function go(e){ if (!w.alive()){ document.removeEventListener('keydown', go); return; }
-    if (e.key === 'Enter'){ e.preventDefault(); location.assign(GATEWAY_URL); } });
+    if (e.key === 'Enter' && !w.expired){ e.preventDefault(); location.assign(GATEWAY_URL); } });
 }
 
 
@@ -224,6 +224,7 @@ async function hexCrypto(w, svg, hx, ms){
    e fecham novos hexágonos, de frente → o favo enrola em 3D e gira. Câmera pré-calculada e suavizada (sem saltos).
    Estudos anteriores em arquivo/2026-11-14-favo3d/. */
 const FL_T = {A: .7, B: 1.5, W: 3.6, W2: 7.6, D: 8.6, END: 11}, FL_BUD = .11;
+const FL_S3D = .22, FL_PAN = .075;   // escala final do Flamm (fração da altura) e subida final, para caber IPs e status
 const flClamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x)), flLerp = (a, b, t) => a + (b - a) * t;
 const flSmooth = t => t * t * (3 - 2 * t), flEase = t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
 let FL = null;
@@ -267,10 +268,11 @@ function flammPrep(){
     for (let e = 0; e < 6; e++){ const p0 = cl.flat[3 * e], p1 = cl.flat[(3 * e + 3) % 18], d = Math.hypot((p0[0] + p1[0]) / 2 - pc[0], (p0[1] + p1[1]) / 2 - pc[1], (p0[2] + p1[2]) / 2 - pc[2]); if (d < bd){ bd = d; best = e; } }
     cl.shared = best; });
   // proporções fixas do palco (largura = 1): viewBox 420×330, favo 2D com raio 115
-  const UH = 330 / 420, U2D = 115 / 420, U3D = Math.min(.3, UH * .29), T = FL_T;
-  function scene(t){
+  const UH = 330 / 420, U2D = 115 / 420, U3D = UH * FL_S3D, T = FL_T;
+  const yawBase = t => { const spinT = Math.max(0, t - T.W); return (Math.PI / 2 - thS) + .11 * (spinT < 1 ? spinT * spinT / 2 : spinT - .5); };
+  function scene(t, extraYaw = 0){
     const wrap = flEase(flClamp((t - T.W) / (T.W2 - T.W)));
-    const pitch = flLerp(0, .26, wrap), spinT = Math.max(0, t - T.W), yaw = (Math.PI / 2 - thS) + .11 * (spinT < 1 ? spinT * spinT / 2 : spinT - .5);
+    const pitch = flLerp(0, .26, wrap), yaw = yawBase(t) + extraYaw;
     const cy_ = Math.cos(yaw), sy_ = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
     const raw = (x, y, z) => { const x1 = x*cy_ - z*sy_, z1 = x*sy_ + z*cy_, sy = -y*cp + z1*sp, dz = y*sp + z1*cp, kk = 7 / (7 - dz * .45); return [x1*kk, sy*kk, dz]; };
     const mult = flClamp((t - T.B) / (T.D - T.B)), items = [];
@@ -300,12 +302,15 @@ function flammPrep(){
     .map((c, i) => { const u = flSmooth(flClamp(i * CDT / .6)); return c.map((v, k) => flLerp(G[0][k], v, u)); });
   const camAt = t => { const f = flClamp((t - T.B) / CDT, 0, CAM.length - 1), i = Math.floor(f), j = Math.min(i + 1, CAM.length - 1), u = f - i;
     const c = CAM[i].map((v, k) => flLerp(v, CAM[j][k], u)); return {Z: Math.exp(c[0]), ux: c[1], vy: c[2]}; };
-  return (FL = {cells, scene, camAt});
+  return (FL = {cells, scene, camAt, yawBase});
 }
 
 /* desenha o quadro t (s) num canvas W×H com o mesmo enquadramento do palco 420×330 */
-function flammDraw(ctx, W, H, t){
-  const F = flammPrep(), T = FL_T, k = W / 420, cx = 210 * k, cy = 165 * k, s2D = 115 * k, s3D = Math.min(W * .3, H * .29);
+/* opções: yaw (giro extra, rad) · rgb (cor das arestas; verde neon por padrão) · close (0→1: o favo único se desfaz)
+   · labels {top, bottom: [[texto, cor, negrito]], alpha} */
+function flammDraw(ctx, W, H, t, o = {}){
+  const F = flammPrep(), T = FL_T, k = W / 420, s2D = 115 * k, s3D = H * FL_S3D, rgb = o.rgb || [120, 255, 90];
+  const cx = 210 * k, cy = 165 * k - FL_PAN * H * flEase(flClamp((t - T.W) / (T.D - T.W)));
   ctx.clearRect(0, 0, W, H);
   const FILL = c => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`, tileFront = [12 * 1.6 * .95, 46 * 1.6 * .95, 16 * 1.6 * .95];
   const poly = (pts, fill, stroke, lw) => { ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath();
@@ -313,6 +318,13 @@ function flammDraw(ctx, W, H, t){
   if (t < T.B){   // os pontos e o texto somem; o favo ganha preenchimento
     const big = []; for (let i = 0; i < 6; i++){ const a0 = (-90 + 60 * i) * Math.PI / 180, a1 = (-90 + 60 * (i + 1)) * Math.PI / 180;
       for (let j = 0; j < 3; j++){ const u = j / 3; big.push([cx + s2D * flLerp(Math.cos(a0), Math.cos(a1), u), cy + s2D * flLerp(Math.sin(a0), Math.sin(a1), u)]); } }
+    if (o.close != null){   // rede se fechando: o preenchimento some e o contorno se apaga a partir do topo
+      const c = flClamp(o.close); ctx.globalAlpha = 1 - flSmooth(flClamp(c / .6)); poly(big, FILL(tileFront)); ctx.globalAlpha = 1;
+      const left = (1 - flSmooth(c)) * 18; if (left > 0){ ctx.beginPath(); ctx.moveTo(big[0][0], big[0][1]);
+        for (let j = 1; j <= Math.floor(left); j++){ const q = big[j % 18]; ctx.lineTo(q[0], q[1]); }
+        const j0 = Math.floor(left), fr = left - j0; if (j0 < 18 && fr > 0){ const a = big[j0 % 18], b = big[(j0 + 1) % 18]; ctx.lineTo(flLerp(a[0], b[0], fr), flLerp(a[1], b[1], fr)); }
+        ctx.strokeStyle = `rgb(${rgb})`; ctx.lineWidth = 2; ctx.stroke(); }
+      return; }
     ctx.globalAlpha = flSmooth(flClamp((t - T.A) / (T.B - T.A))); poly(big, FILL(tileFront)); ctx.globalAlpha = 1;
     poly(big, null, '#78ff5a', 2);
     const dotA = 1 - flSmooth(flClamp(t / T.A));
@@ -321,10 +333,10 @@ function flammDraw(ctx, W, H, t){
         ctx.globalAlpha = dotA; ctx.fillStyle = '#78ff5a'; ctx.beginPath(); ctx.arc(q[0], q[1], 6 * k * dotA, 0, Math.PI * 2); ctx.fill();
         if (dotA > .5){ ctx.fillStyle = '#000'; ctx.font = `700 ${8 * k}px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(i + 1, q[0], q[1] + .5); } }
       ctx.globalAlpha = dotA; ctx.fillStyle = '#78ff5a'; ctx.font = `${11 * k}px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-      ctx.fillText('criptografia', cx, cy - 4 * k); ctx.font = `${10 * k}px ${MONO}`; ctx.fillText('concluída', cx, cy + 16 * k); }
+      ctx.fillText('encryption', cx, cy - 4 * k); ctx.font = `${10 * k}px ${MONO}`; ctx.fillText('complete', cx, cy + 16 * k); }
     ctx.globalAlpha = 1; return;
   }
-  const sc = F.scene(t), {items, raw, wrap} = sc, cam = F.camAt(t), Z = cam.Z, Z0 = sc.Z0;
+  const sc = F.scene(t, o.yaw || 0), {items, raw, wrap} = sc, cam = F.camAt(t), Z = cam.Z, Z0 = sc.Z0;
   for (const it of items) it.pts = it.pts.map(q => [cx + (q[0] - cam.ux) * s3D * Z, cy + (q[1] - cam.vy) * s3D * Z, q[2]]);
   items.sort((a, b) => a.z - b.z);
   const allZ = F.cells.map(cl => raw(cl.c[0], cl.c[1], cl.c[2])[2]), zmin = Math.min(...allZ), zmax = Math.max(...allZ);
@@ -332,7 +344,7 @@ function flammDraw(ctx, W, H, t){
   for (const it of items){ const A = it.pts[0], B = it.pts[6], C = it.pts[12], front = ((B[0]-A[0])*(C[1]-A[1]) - (B[1]-A[1])*(C[0]-A[0])) < 0;
     const depth = flClamp((it.z - zmin) / ((zmax - zmin) || 1)), lum = flLerp((front ? .62 : .38) + .45 * depth, .95, 1 - wrap);
     const fill = FILL([12 * lum * 1.6, 46 * lum * 1.6, 16 * lum * 1.6]);
-    const st = `rgba(120,255,90,${flLerp((front ? .8 : .28) * (.45 + .55 * depth), 1, 1 - wrap)})`;   // arestas sempre verde neon
+    const st = `rgba(${rgb},${flLerp((front ? .8 : .28) * (.45 + .55 * depth), 1, 1 - wrap)})`;   // arestas verde neon (âmbar quando a rede se fecha)
     if (it.g >= 1){ poly(it.pts, fill, st, lw); continue; }
     // em formação: das pontas da aresta compartilhada saem duas arestas de cada lado, que se encontram na oposta
     const fa = flSmooth(flClamp((it.g - .82) / .18)), e0 = F.cells[it.i].shared, grow = flClamp(it.g / .82) * 3;
@@ -346,43 +358,77 @@ function flammDraw(ctx, W, H, t){
     seg((e0 + 2) % 6, 0, flClamp(grow - 1)); seg((e0 + 4) % 6, 1, flClamp(grow - 1));
     seg((e0 + 3) % 6, 0, flClamp(grow - 2) / 2); seg((e0 + 3) % 6, 1, flClamp(grow - 2) / 2);
     ctx.stroke(); }
+  // rótulos: IP de origem no topo do túnel; IP do gamma e status no rodapé
+  const L = o.labels; if (L && L.alpha > 0 && items.length){
+    let y0 = 1e9, y1 = -1e9; for (const it of items) for (const q of it.pts){ if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }
+    ctx.globalAlpha = L.alpha; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    if (L.top){ ctx.font = `600 ${10.5 * k}px ${MONO}`; ctx.fillStyle = '#beffaa'; ctx.fillText(L.top, cx, Math.max(12 * k, y0 - 8 * k)); }
+    let y = y1 + 15 * k;
+    for (const [txt, col, bold] of L.bottom || []){ ctx.font = `${bold ? 800 : 600} ${(bold ? 12.5 : 10.5) * k}px ${MONO}`; ctx.fillStyle = col; ctx.fillText(txt, cx, y); y += (bold ? 16 : 15) * k; }
+    ctx.globalAlpha = 1; }
 }
 
-/* sobre o palco do p8: o canvas assume o favo 2D no mesmo lugar e segue girando até a janela fechar */
+/* sobre o palco do p8: o canvas assume o favo 2D no mesmo lugar e segue girando até a janela fechar.
+   Devolve {ready (Promise, túnel formado), labels(def), collapse(ms) (Promise: túnel se desfaz e a rede se fecha)} */
 function favo3D(w, stage, svg){
-  flammPrep();
+  const F = flammPrep(), T = FL_T;
   const cv = document.createElement('canvas'); cv.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none';
   stage.appendChild(cv);
   const ctx = cv.getContext('2d'), box = svg.getBoundingClientRect(), DPR = Math.min(devicePixelRatio || 1, 2), W = box.width, H = box.height;
   cv.style.width = W + 'px'; cv.style.height = H + 'px'; cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  const t0 = performance.now();
+  const t0 = performance.now(); let labels = null, labelsAt = 0, col = null, mode = 'run', stopped = false;
+  const fx = {
+    ready: wait(T.D * 1000),
+    labels(def){ labels = def; labelsAt = performance.now(); },
+    collapse(ms = 6500){ col = {at: performance.now(), tc: (performance.now() - t0) / 1000, ms, closeMs: 1400}; mode = 'collapse';
+      return new Promise(r => col.done = r); },
+    stop(){ stopped = true; }
+  };
   function loop(now){
-    if (!w.alive()) return;
-    const t = REDUCE ? FL_T.D + 1 : (now - t0) / 1000;
-    flammDraw(ctx, W, H, t);
+    if (!w.alive() || stopped) return;
+    let t = REDUCE ? T.D + 1 : (now - t0) / 1000, o = {};
+    if (labels) o.labels = {...labels, alpha: REDUCE ? 1 : flSmooth(flClamp((now - labelsAt) / 700))};
+    if (mode === 'collapse'){
+      const e = (now - col.at) / 1000, D = col.ms / 1000;
+      if (labels) o.labels.alpha = 1 - flSmooth(flClamp(e / .6));
+      o.rgb = [255, 190, 0];
+      if (e < D){   // o túnel volta pelo mesmo caminho: desenrola, as células se desfazem até restar o primeiro hexágono
+        const p = flEase(flClamp(e / D)), tr = T.D - (T.D - T.B) * p, Y0 = F.yawBase(col.tc);
+        const E0 = (((Y0 - F.yawBase(T.D)) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+        const pa = flClamp((T.D - tr) / (T.D - T.W));   // o giro extra termina alinhado antes do favo voltar ao plano
+        t = tr; o.yaw = E0 + (2 * Math.PI - E0) * flSmooth(pa);
+      } else {
+        const c = (e - D) / (col.closeMs / 1000); t = T.B - 1e-6; o.close = c;
+        if (c >= 1){ flammDraw(ctx, W, H, t, o); mode = 'closed'; col.done(); return; }
+      }
+    }
+    flammDraw(ctx, W, H, t, o);
     if (svg.style.visibility !== 'hidden') svg.style.visibility = 'hidden';   // o canvas já desenhou o mesmo favo por cima
-    if (!REDUCE) requestAnimationFrame(loop);
+    if (!REDUCE || mode === 'collapse') requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
-  return wait(FL_T.D * 1000);
+  return fx;
 }
 
-/* ------------------------------------------------------------ 8 · Favo girado + sessão com estágios (escolhido) */
+/* ------------------------------------------------------------ 8 · Favo girado + sessão com estágios (escolhido)
+   Toda a comunicação em inglês. Antes do login o terminal é anônimo (qualquer um pode estar tentando);
+   só depois da autenticação aparece login@gamma. Inatividade de 5 min: o túnel se desfaz e a rede se fecha. */
+const IDLE_MS = 5 * 60 * 1000;
+const GAMMA_ADDR = '••.•••.•••.•••';   // o IP real do gamma nunca vai para o código público
 async function p8(){
-  const w = frame('lucas@gamma: ~', 'min'); win = w;
+  const w = frame('ssh gamma', 'min'); win = w;
   w.body.innerHTML = `<div style="display:grid;grid-template-columns:1fr 330px;min-height:430px">
     <div style="display:flex;flex-direction:column"><div class="ta-txt hd" style="padding:14px 16px 0"></div>
-      <div class="stage" style="position:relative"><svg viewBox="0 0 420 330" aria-hidden="true"></svg>
-        <div class="ov3" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;opacity:0;z-index:2"></div></div></div>
+      <div class="stage" style="position:relative"><svg viewBox="0 0 420 330" aria-hidden="true"></svg></div></div>
     <div style="border-left:1px solid ${C.panel};display:flex;flex-direction:column">
       <div class="lst" style="padding:12px 16px 6px"></div>
       <div class="ta-txt lg" style="flex:1;max-height:120px;overflow:hidden;font-size:11.5px;color:${C.dim};border-top:1px solid ${C.panel}"></div>
       <div class="ta-txt fin" style="border-top:1px solid ${C.panel};padding:10px 16px"></div></div></div>`;
-  const svg = w.body.querySelector('svg'), stage = w.body.querySelector('.stage'), ov3 = w.body.querySelector('.ov3');
+  const svg = w.body.querySelector('svg'), stage = w.body.querySelector('.stage'), fin = w.body.querySelector('.fin');
   const lst = w.body.querySelector('.lst'), lg = w.body.querySelector('.lg'), t = typer(w.body.querySelector('.hd'), w);
-  await t(PROMPT + 'ssh lucas@gamma', {speed: 55, pause: 400});
+  await t('<span class="d">$</span> ssh gamma', {speed: 55, pause: 400});
   const hx = hexStage(svg, 210, 165, 115, true);
-  hx.center('localizando…', '', C.dim);
+  hx.center('locating…', '', C.dim);
   setTimeout(flammPrep, 300);   // pré-calcula o Flamm e a câmera enquanto os estágios rodam
   const g = await geo(), S = STG(g);
   lst.innerHTML = S.map((st, i) => `<div class="r" style="display:grid;grid-template-columns:18px 1fr;gap:8px;padding:6px 0;border-bottom:1px solid ${C.panel};color:${C.line}">
@@ -390,29 +436,59 @@ async function p8(){
     <div style="font-size:11px;color:${C.line}" class="sd">${esc(st.s)}${st.s2 ? ' · ' + esc(st.s2) : ''}</div></div></div>`).join('');
   const rows = [...lst.children];
   const log = s => { lg.insertAdjacentHTML('beforeend', `${new Date().toISOString().slice(11, 19)} ${esc(s)}\n`); while (lg.scrollHeight > lg.clientHeight && lg.firstChild) lg.removeChild(lg.firstChild); };
-  const ok = (i, r) => { hx.approve(i); r.querySelector('.m').textContent = '●'; r.querySelector('.m').style.color = C.green; r.querySelector('.v').innerHTML = '<span class="g">aprovado</span>'; };
+  const ok = (i, r) => { hx.approve(i); r.querySelector('.m').textContent = '●'; r.querySelector('.m').style.color = C.green; r.querySelector('.v').innerHTML = '<span class="g">approved</span>'; };
   await wait(600);
   for (let i = 0; i < 6; i++){ if (!w.alive()) return;
     if (i > 0) await hx.edge(i - 1, null, .014);     // ~1,2 s por aresta
     const r = rows[i]; r.style.color = C.fg; r.querySelector('.sd').style.color = C.dim; r.querySelector('.m').textContent = '◌'; r.querySelector('.m').style.color = C.frost;
-    hx.active(i); hx.center(`${i + 1}/6`, S[i].n, C.fg, C.dim); w.status(`estágio ${i + 1}/6 · <b>${esc(S[i].n)}</b>`);
+    hx.active(i); hx.center(`${i + 1}/6`, S[i].n, C.fg, C.dim); w.status(`stage ${i + 1}/6 · <b>${esc(S[i].n)}</b>`);
     log(S[i].log); await wait(1400);                  // tempo de leitura
-    if (i === 4){ hx.warn(i); r.querySelector('.v').innerHTML = '<span class="w">autenticando</span>'; await loginPanel(w, w.body); if (!w.alive()) return; log('credenciais e código do dia aprovados'); await wait(500); }
+    if (i === 4){ hx.warn(i); r.querySelector('.v').innerHTML = '<span class="w">authenticating</span>'; await loginPanel(w, w.body); if (!w.alive()) return;
+      log('credentials and daily code approved'); w.title(`${LOGIN}@gamma: ~`); await wait(500); }
     if (i === 5){
-      r.querySelector('.v').innerHTML = '<span class="i">criptografando</span>';
-      log('troca de chaves x25519'); await hexCrypto(w, svg, hx, 2200); log('cifra aes-256-gcm ativa'); await hexCrypto(w, svg, hx, 1600); if (!w.alive()) return;
+      r.querySelector('.v').innerHTML = '<span class="i">encrypting</span>';
+      log('x25519 key exchange'); await hexCrypto(w, svg, hx, 2200); log('aes-256-gcm cipher active'); await hexCrypto(w, svg, hx, 1600); if (!w.alive()) return;
     }
     ok(i, r); await wait(500);
   }
   await hx.edge(5, C.green, .02); hx.allGreen();
-  hx.center('criptografia', 'concluída', C.green, C.green); log('criptografia concluída');
-  // logo após a criptografia: o favo 2D vira o buraco de minhoca até o gamma
-  w.status('<span class="ok">CRIPTOGRAFADO</span>abrindo túnel até o gamma…'); log('abrindo túnel até o gamma…');
-  await favo3D(w, stage, svg, hx); if (!w.alive()) return;
-  ov3.innerHTML = `<div style="background:rgba(2,6,3,.78);padding:8px 16px;text-align:center;font:800 20px/1.25 ${MONO_I};color:${C.green};letter-spacing:.04em">ACESSO<br>AUTORIZADO</div>`;
-  await fade(ov3, 0, 1, 500);
-  log('acesso autorizado · sessão com gamma aberta');
-  await authorized(w, w.body.querySelector('.fin'));
+  hx.center('encryption', 'complete', C.green, C.green); log('encryption complete');
+  w.status('<span class="ok">ENCRYPTED</span>opening tunnel to gamma…'); log('opening tunnel to gamma…');
+  const fx = favo3D(w, stage, svg); await fx.ready; if (!w.alive()) return;
+  fx.labels({top: `ORIGIN ${g.ip}`, bottom: [[`GAMMA ${GAMMA_ADDR} · private network`, C.frost], ['ACCESS GRANTED', C.green, true], ['TUNNEL STABILIZED', C.green, true]]});
+  log('access granted · tunnel stabilized');
+  await authorized(w, fin);
+
+  /* inatividade: 5 min sem mexer no mouse/teclado e a sessão expira */
+  let last = performance.now();
+  const poke = () => { last = performance.now(); };
+  const evs = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart'];
+  evs.forEach(e => document.addEventListener(e, poke, {passive: true}));
+  const idle = (window.CXT_IDLE_MS || IDLE_MS);
+  const mmss = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${String(s / 60 | 0).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
+  while (w.alive()){
+    const left = idle - (performance.now() - last);
+    w.status(null, `${GATEWAY_URL ? 'Enter to connect · ' : ''}idle timeout <b>${mmss(left)}</b> · Esc to close`);
+    if (left <= 0) break;
+    await wait(250);
+  }
+  evs.forEach(e => document.removeEventListener(e, poke));
+  if (!w.alive()) return;
+
+  /* o túnel se desfaz e a rede se fecha, do último estágio ao primeiro */
+  w.expired = true; w.status('<span class="blk">EXPIRED</span>idle timeout · closing tunnel…', ''); log('idle timeout · closing session'); log('tunnel collapsing…');
+  const closing = fx.collapse(6500);
+  for (let i = 5; i >= 0; i--){ if (!w.alive()) return; await wait(1050);
+    const r = rows[i]; r.style.color = C.line; r.querySelector('.sd').style.color = C.line; r.querySelector('.m').textContent = '×'; r.querySelector('.m').style.color = C.red;
+    r.querySelector('.v').innerHTML = '<span class="r">closed</span>'; log(`${S[i].n.toLowerCase()} closed`); }
+  await closing; if (!w.alive()) return;
+  log('network closed');
+  w.title('ssh gamma');
+  fin.innerHTML = '';
+  const tf = typer(fin, w);
+  await tf('<span class="w">Connection to gamma closed (idle 5 min).</span>', {speed: 8});
+  fin.insertAdjacentHTML('beforeend', '<span class="d">$</span> <span class="ta-cur"></span>');
+  w.status('<span class="blk">CLOSED</span>session expired · tunnel and network closed', 'Esc to close');
 }
 
 
