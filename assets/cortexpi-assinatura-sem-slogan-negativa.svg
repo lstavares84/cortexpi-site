@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="652" height="244" viewBox="0 0 652 244" role="img" aria-labelledby="titulo descricao">
+<title id="titulo">CortexPi</title>
+<desc id="descricao">Identidade visual CortexPi. Vetorização para revisão.</desc>
+<g transform="translate(22 22) scale(1)">
+<g fill="none" stroke-linecap="butt" stroke-linejoin="miter">
+  <path id="arco-principal" d="M 143.550 175.431 A 87.1 87.1 0 1 1 143.550 24.569" stroke="#F4F1EC" stroke-width="13.8"/>
+  <path id="arco-secundario" d="M 171.079 44.467 A 90.2 90.2 0 0 1 172.973 153.018" stroke="#F4F1EC" stroke-width="7.6"/>
+  <path id="guia-interna" d="M 100 69 V 39 A 61 61 0 0 0 39 100 A 61 61 0 0 0 100 161 V 118" stroke="#C7CDD3" stroke-opacity="0.82" stroke-width="5.6"/>
+  <g fill="#B26E3B">
+    <rect id="nucleo-de-decisao" x="86" y="86" width="28" height="28"/>
+    <circle id="ponto-de-sinal" cx="154.288" cy="27.716" r="8.2"/>
+  </g>
+</g>
+</g>
+<g transform="translate(276 88.5) scale(1)">
+<g fill="#F4F1EC" fill-rule="evenodd">
+<path d="M48 0H13C4.7 0 0 5.2 0 13.1v41C0 62.5 4.7 67 13 67h35v-8.1H15c-4 0-6.1-2-6.1-6.3V14.3c0-4.2 2.1-6.2 6.1-6.2h33Z"/>
+<path d="M70 20h17c7.8 0 12.2 4.4 12.2 12.6v21.8c0 8.2-4.4 12.6-12.2 12.6H70c-7.8 0-12.4-4.4-12.4-12.6V32.6C57.6 24.4 62.2 20 70 20Zm1.2 7.8c-3.7 0-5.2 1.7-5.2 5.5v20.5c0 3.7 1.5 5.4 5.2 5.4h14.6c3.5 0 5-1.7 5-5.4V33.3c0-3.8-1.5-5.5-5-5.5Z"/>
+<path d="M109.5 67V33c0-8.5 4.7-13 12.4-13h17v7.8h-15.6c-3.7 0-5.4 1.8-5.4 5.7V67Z"/>
+<path d="M147.3 2h8.4v18h16.8v7.8h-16.8v25.7c0 3.9 1.8 5.7 5.6 5.7h11.2V67h-12.3c-8.2 0-12.9-4.8-12.9-13Z"/>
+<path d="M193.6 20h15.3c8 0 12.6 4.6 12.6 12.6v14.1h-32.7v7.1c0 3.7 1.7 5.4 5.4 5.4h25.5V67h-26.1c-8.3 0-13-4.5-13-12.9V32.9c0-8.3 4.7-12.9 13-12.9Zm-4.8 19.5h24.4v-6.3c0-3.8-1.7-5.5-5.3-5.5h-13.7c-3.7 0-5.4 1.9-5.4 5.6Z"/>
+<path d="M228.8 20h10l11.9 16.1L262.4 20h10l-17 23.1L273 67h-10.2l-12.2-16.8L238.4 67h-10.1l17.5-23.9Z"/>
+<path d="M280.3 0h37.6c8.4 0 13.2 4.8 13.2 13.2v15.7c0 8.5-4.8 13.3-13.2 13.3h-28.6V67h-9Zm9 8.2v25.8h27.5c3.8 0 5.6-1.9 5.6-5.7V13.8c0-3.8-1.8-5.6-5.6-5.6Z"/>
+<path d="M339.2 0h8.6v9.6h-8.6Zm0 20h8.6v47h-8.6Z"/>
+</g>
+</g>
+</svg>

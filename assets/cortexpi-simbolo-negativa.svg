@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200" role="img" aria-labelledby="titulo descricao">
+<title id="titulo">CortexPi</title>
+<desc id="descricao">Símbolo CortexPi. Brand Book v1.1, páginas 5 a 6. Dois segmentos de 240 e 74 graus. Aberturas de 22 e 24 graus. Ponto cobre a 31,4% da abertura superior, medidos em sentido horário a partir do arco principal.</desc>
+<g fill="none" stroke-linecap="butt" stroke-linejoin="miter">
+  <path id="arco-principal" d="M 143.550 175.431 A 87.1 87.1 0 1 1 143.550 24.569" stroke="#F4F1EC" stroke-width="13.8"/>
+  <path id="arco-secundario" d="M 171.079 44.467 A 90.2 90.2 0 0 1 172.973 153.018" stroke="#F4F1EC" stroke-width="7.6"/>
+  <path id="guia-interna" d="M 100 69 V 39 A 61 61 0 0 0 39 100 A 61 61 0 0 0 100 161 V 118" stroke="#C7CDD3" stroke-opacity="0.82" stroke-width="5.6"/>
+  <g fill="#B26E3B">
+    <rect id="nucleo-de-decisao" x="86" y="86" width="28" height="28"/>
+    <circle id="ponto-de-sinal" cx="154.288" cy="27.716" r="8.2"/>
+  </g>
+</g>
+</svg>
