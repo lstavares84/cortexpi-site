@@ -127,7 +127,26 @@ const STG = g => [
   {n: 'Gamma Network tunnel', s: 'tunnel up', s2: 'wireguard', log: 'tunnel to Gamma Network established'},
   {n: 'Firewall',            s: 'login · password · code', s2: '', log: 'firewall: authentication required'},
   {n: 'Encryption',          s: 'x25519 · aes-256-gcm', s2: '', log: 'end-to-end encrypted channel'}];
-const LOGIN = 'lucas';   // usuário digitado no painel (animação); só aparece depois da autenticação
+let LOGIN = 'guest';   // usuário digitado no painel; só aparece depois da autenticação
+/* lê uma linha digitada no terminal. secret: mostra só asteriscos e guarda apenas a contagem (o texto nunca é armazenado nem enviado).
+   Devolve o texto (ou a contagem, se secret) no Enter; null se a janela fechar. */
+function readLine(w, el, {secret = false, max = 64, allow = /^[\x20-\x7e]$/, color} = {}){
+  return new Promise(res => {
+    let buf = '', n = 0; const txt = document.createElement('span'), cur = document.createElement('span');
+    cur.className = 'ta-cur'; if (color) txt.style.color = color; el.append(txt, cur);
+    const show = () => { txt.textContent = secret ? '*'.repeat(n) : buf; };
+    const done = v => { document.removeEventListener('keydown', on, true); clearInterval(chk); cur.remove(); res(v); };
+    const on = e => {
+      if (!w.alive()) return done(null);
+      if (e.key === 'Escape' || e.ctrlKey || e.metaKey || e.altKey || (e.repeat && e.key !== 'Backspace')) return;   // repetição: as teclas C+P+I ainda seguradas não vazam para o prompt
+      if (e.key === 'Enter'){ e.preventDefault(); e.stopPropagation(); return done(secret ? n : buf); }
+      if (e.key === 'Backspace'){ e.preventDefault(); if (secret) n = Math.max(0, n - 1); else buf = buf.slice(0, -1); return show(); }
+      if (e.key.length === 1){ e.preventDefault(); if (allow.test(e.key) && (secret ? n : buf.length) < max){ if (secret) n++; else buf += e.key; show(); } }
+    };
+    const chk = setInterval(() => { if (!w.alive()) done(null); }, 300);
+    document.addEventListener('keydown', on, true);
+  });
+}
 
 /* tela de autenticação do firewall: só animação, sem campos reais */
 async function loginPanel(w, host){
@@ -144,13 +163,18 @@ async function loginPanel(w, host){
         <div class="ok" style="margin-top:16px;min-height:20px;text-align:center;font:800 13px ${MONO_I};letter-spacing:.08em"></div></div></div>`;
   host.appendChild(ov);
   const [fu, fp, fc] = ov.querySelectorAll('.f'), ok = ov.querySelector('.ok');
-  const type = async (el, txt, col, focusCol) => { el.style.borderColor = focusCol; el.style.color = col;
-    for (const ch of txt){ if (!w.alive()) return; el.textContent += ch; await wait(150); } el.style.borderColor = C.line; await wait(350); };
-  await wait(700);
-  await type(fu, LOGIN, C.green, C.frost);          // usuário = verde (regra de cor)
-  await type(fp, '**********', C.fg, C.frost);
-  await type(fc, '******', C.fg, C.frost);
-  ok.style.color = C.frost; ok.textContent = 'verifying…'; await wait(1300);
+  const say = (txt, col) => { ok.style.color = col; ok.textContent = txt; };
+  const ask = async (el, opt, valid, msg) => {   // repete até o valor ser válido
+    for (;;){ el.textContent = ''; el.style.borderColor = C.frost; const v = await readLine(w, el, opt); if (v == null) return null;
+      if (valid(v)){ el.style.borderColor = C.line; say('', C.dim); return v; }
+      el.style.borderColor = C.red; say(msg, C.red); await wait(900); } };
+  w.status('<span class="blk">AUTH</span>cortexpi firewall · type your credentials', 'Enter to confirm · Esc to close');
+  say('type and press Enter', C.dim);
+  const user = await ask(fu, {max: 24, allow: /^[a-zA-Z0-9._-]$/, color: C.green}, v => v.length > 0, 'username required');   // usuário = verde (regra de cor)
+  if (user == null) return; LOGIN = user.toLowerCase(); fu.firstChild.textContent = LOGIN;
+  if (await ask(fp, {secret: true, max: 64}, n => n > 0, 'password required') == null) return;
+  if (await ask(fc, {secret: true, max: 6, allow: /^[0-9]$/}, n => n === 6, 'daily code must have 6 digits') == null) return;
+  say('verifying…', C.frost); await wait(1300);
   ok.style.color = C.green; ok.textContent = '✓ CREDENTIALS APPROVED'; await wait(1600);
   await fade(ov, 1, 0, 350); ov.remove();
 }
@@ -224,7 +248,7 @@ async function hexCrypto(w, svg, hx, ms){
    e fecham novos hexágonos, de frente → o favo enrola em 3D e gira. Câmera pré-calculada e suavizada (sem saltos).
    Estudos anteriores em arquivo/2026-11-14-favo3d/. */
 const FL_T = {A: .7, B: 1.5, W: 3.6, W2: 7.6, D: 8.6, END: 11}, FL_BUD = .11;
-const FL_S3D = .22, FL_PAN = .075;   // escala final do Flamm (fração da altura) e subida final, para caber IPs e status
+const FL_S3D = .22, FL_PAN = .075;   // escala do Flamm (fração da altura do palco 420×330) e subida final (sem fitH)
 const flClamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x)), flLerp = (a, b, t) => a + (b - a) * t;
 const flSmooth = t => t * t * (3 - 2 * t), flEase = t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
 let FL = null;
@@ -302,16 +326,29 @@ function flammPrep(){
     .map((c, i) => { const u = flSmooth(flClamp(i * CDT / .6)); return c.map((v, k) => flLerp(G[0][k], v, u)); });
   const camAt = t => { const f = flClamp((t - T.B) / CDT, 0, CAM.length - 1), i = Math.floor(f), j = Math.min(i + 1, CAM.length - 1), u = f - i;
     const c = CAM[i].map((v, k) => flLerp(v, CAM[j][k], u)); return {Z: Math.exp(c[0]), ux: c[1], vy: c[2]}; };
-  return (FL = {cells, scene, camAt, yawBase});
+  // caixa do túnel formado (relativa à câmera final, em unidades de s3D), cobrindo uma volta inteira do giro
+  const cD = camAt(T.D), finBox = {x0: 1e9, x1: -1e9, y0: 1e9, y1: -1e9};
+  for (let j = 0; j < 12; j++) for (const it of scene(T.D, j * Math.PI / 6).items) for (const q of it.pts){
+    const x = (q[0] - cD.ux) * cD.Z, y = (q[1] - cD.vy) * cD.Z;
+    finBox.x0 = Math.min(finBox.x0, x); finBox.x1 = Math.max(finBox.x1, x); finBox.y0 = Math.min(finBox.y0, y); finBox.y1 = Math.max(finBox.y1, y); }
+  return (FL = {cells, scene, camAt, yawBase, finBox});
 }
 
 /* desenha o quadro t (s) num canvas W×H com o mesmo enquadramento do palco 420×330 */
 /* opções: yaw (giro extra, rad) · rgb (cor das arestas; verde neon por padrão) · close (0→1: o favo único se desfaz)
-   · labels {top, bottom: [[texto, cor, negrito]], alpha} */
+   · labels {top, bottom: [[texto, cor, negrito]], alpha}
+   · fitH (altura total do canvas, ≥ H): ao formar o túnel, ele e os rótulos crescem até ocupar toda essa altura */
 function flammDraw(ctx, W, H, t, o = {}){
   const F = flammPrep(), T = FL_T, k = W / 420, s2D = 115 * k, s3D = H * FL_S3D, rgb = o.rgb || [120, 255, 90];
-  const cx = 210 * k, cy = 165 * k - FL_PAN * H * flEase(flClamp((t - T.W) / (T.D - T.W)));
-  ctx.clearRect(0, 0, W, H);
+  const fe = flEase(flClamp((t - T.W) / (T.D - T.W)));
+  let cx = 210 * k, cy = 165 * k - (o.fitH ? 0 : FL_PAN * H * fe), gz = 1;
+  if (o.fitH){   // enquadramento final: túnel + IP no topo + 3 linhas no rodapé preenchendo a altura toda
+    const B = F.finBox, m = 10 * k, top = m + 20 * k, bot = o.fitH - m - 50 * k;
+    const g = Math.max(1, Math.min((bot - top) / ((B.y1 - B.y0) * s3D), (W - 2 * m) / ((B.x1 - B.x0) * s3D)));
+    const used = (B.y1 - B.y0) * s3D * g, y0 = top + ((bot - top) - used) / 2;
+    gz = flLerp(1, g, fe); cy = flLerp(cy, y0 - B.y0 * s3D * g, fe); cx = flLerp(cx, W / 2 - (B.x0 + B.x1) / 2 * s3D * g, fe);
+  }
+  ctx.clearRect(0, 0, W, o.fitH || H);
   const FILL = c => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`, tileFront = [12 * 1.6 * .95, 46 * 1.6 * .95, 16 * 1.6 * .95];
   const poly = (pts, fill, stroke, lw) => { ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath();
     if (fill){ ctx.fillStyle = fill; ctx.fill(); } if (stroke){ ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); } };
@@ -337,7 +374,7 @@ function flammDraw(ctx, W, H, t, o = {}){
     ctx.globalAlpha = 1; return;
   }
   const sc = F.scene(t, o.yaw || 0), {items, raw, wrap} = sc, cam = F.camAt(t), Z = cam.Z, Z0 = sc.Z0;
-  for (const it of items) it.pts = it.pts.map(q => [cx + (q[0] - cam.ux) * s3D * Z, cy + (q[1] - cam.vy) * s3D * Z, q[2]]);
+  for (const it of items) it.pts = it.pts.map(q => [cx + (q[0] - cam.ux) * s3D * Z * gz, cy + (q[1] - cam.vy) * s3D * Z * gz, q[2]]);
   items.sort((a, b) => a.z - b.z);
   const allZ = F.cells.map(cl => raw(cl.c[0], cl.c[1], cl.c[2])[2]), zmin = Math.min(...allZ), zmax = Math.max(...allZ);
   const lw = 1.1 + .9 * Math.sqrt(Z0 > 1 ? flClamp((Z - 1) / (Z0 - 1)) : 0);
@@ -375,7 +412,12 @@ function favo3D(w, stage, svg){
   const cv = document.createElement('canvas'); cv.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none';
   stage.appendChild(cv);
   const ctx = cv.getContext('2d'), box = svg.getBoundingClientRect(), DPR = Math.min(devicePixelRatio || 1, 2), W = box.width, H = box.height;
-  cv.style.width = W + 'px'; cv.style.height = H + 'px'; cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  // o palco vai até o rodapé e cresce junto com a janela: o canvas acompanha e o enquadramento final desliza suave até a nova altura
+  let HC = 0, HF = 0;
+  const fit = () => { const h = Math.max(H, Math.round(stage.getBoundingClientRect().height));
+    if (h !== HC){ HC = h; cv.style.width = W + 'px'; cv.style.height = h + 'px'; cv.width = W * DPR; cv.height = h * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0); }
+    HF = HF ? HF + (HC - HF) * .12 : HC; if (Math.abs(HC - HF) < .3) HF = HC; };
+  fit();
   const t0 = performance.now(); let labels = null, labelsAt = 0, col = null, mode = 'run', stopped = false;
   const fx = {
     ready: wait(T.D * 1000),
@@ -386,7 +428,7 @@ function favo3D(w, stage, svg){
   };
   function loop(now){
     if (!w.alive() || stopped) return;
-    let t = REDUCE ? T.D + 1 : (now - t0) / 1000, o = {};
+    fit(); let t = REDUCE ? T.D + 1 : (now - t0) / 1000, o = {fitH: HF};
     if (labels) o.labels = {...labels, alpha: REDUCE ? 1 : flSmooth(flClamp((now - labelsAt) / 700))};
     if (mode === 'collapse'){
       const e = (now - col.at) / 1000, D = col.ms / 1000;
@@ -416,17 +458,39 @@ function favo3D(w, stage, svg){
 const IDLE_MS = 5 * 60 * 1000;
 const GAMMA_ADDR = '••.•••.•••.•••';   // o IP real do gamma nunca vai para o código público
 async function p8(){
-  const w = frame('ssh gamma', 'min'); win = w;
+  const w = frame('cortexpi', 'min'); win = w;
   w.body.innerHTML = `<div style="display:grid;grid-template-columns:1fr 330px;min-height:430px">
     <div style="display:flex;flex-direction:column"><div class="ta-txt hd" style="padding:14px 16px 0"></div>
-      <div class="stage" style="position:relative"><svg viewBox="0 0 420 330" aria-hidden="true"></svg></div></div>
+      <div class="stage" style="position:relative;flex:1"><svg viewBox="0 0 420 330" aria-hidden="true"></svg></div></div>
     <div style="border-left:1px solid ${C.panel};display:flex;flex-direction:column">
       <div class="lst" style="padding:12px 16px 6px"></div>
       <div class="ta-txt lg" style="flex:1;max-height:120px;overflow:hidden;font-size:11.5px;color:${C.dim};border-top:1px solid ${C.panel}"></div>
       <div class="ta-txt fin" style="border-top:1px solid ${C.panel};padding:10px 16px"></div></div></div>`;
   const svg = w.body.querySelector('svg'), stage = w.body.querySelector('.stage'), fin = w.body.querySelector('.fin');
   const lst = w.body.querySelector('.lst'), lg = w.body.querySelector('.lg'), t = typer(w.body.querySelector('.hd'), w);
-  await t('<span class="d">$</span> ssh gamma', {speed: 55, pause: 400});
+  const hd = w.body.querySelector('.hd');
+  /* aviso de abertura, estilo filme. O comando de conexão não é anunciado (help continua funcionando). */
+  const BANNER = '<span class="r"><b>■ RESTRICTED ACCESS ■</b></span>\n<span class="w">PRIVATE SYSTEM · AUTHORIZED PERSONNEL ONLY</span>\n<span class="d">Unauthorized access is prohibited.</span>\n';
+  const hint = () => hd.insertAdjacentHTML('beforeend', BANNER + '\n');
+  w.status('<span class="blk">RESTRICTED</span>cortexpi terminal · authorized personnel only', 'Esc to close');
+  await t(BANNER, {speed: 18, pause: 300}); if (!w.alive()) return;
+  for (let lines = 1;;){
+    if (lines > 6){ hd.innerHTML = ''; hint(); lines = 1; }
+    hd.insertAdjacentHTML('beforeend', '<span class="d">$</span> ');
+    const raw = await readLine(w, hd, {max: 60}); if (raw == null) return;
+    hd.appendChild(document.createTextNode('\n')); lines++;
+    const c = raw.trim().replace(/\s+/g, ' ').toLowerCase();
+    if (c === 'connect gamma-network') break;
+    if (!c) continue;
+    if (c === 'clear'){ hd.innerHTML = ''; lines = 0; continue; }
+    if (c === 'exit'){ w.close(); return; }
+    const out = c === 'help' ? '<span class="d">commands: connect gamma-network · clear · exit</span>'
+      : c.startsWith('connect') ? `<span class="w">connect: unknown network '${esc(c.slice(8) || '?')}'</span>`
+      : `<span class="w">${esc(c.split(' ')[0])}: command not found</span>`;
+    hd.insertAdjacentHTML('beforeend', out + '\n'); lines++;
+  }
+  hd.innerHTML = '<span class="d">$</span> connect gamma-network'; w.title('connect gamma-network'); w.status('connecting…', '');
+  await wait(300);
   const hx = hexStage(svg, 210, 165, 115, true);
   hx.center('locating…', '', C.dim);
   setTimeout(flammPrep, 300);   // pré-calcula o Flamm e a câmera enquanto os estágios rodam
@@ -483,7 +547,7 @@ async function p8(){
     r.querySelector('.v').innerHTML = '<span class="r">closed</span>'; log(`${S[i].n.toLowerCase()} closed`); }
   await closing; if (!w.alive()) return;
   log('network closed');
-  w.title('ssh gamma');
+  w.title('cortexpi');
   fin.innerHTML = '';
   const tf = typer(fin, w);
   await tf('<span class="w">Connection to gamma closed (idle 5 min).</span>', {speed: 8});
