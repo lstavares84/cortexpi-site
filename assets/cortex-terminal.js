@@ -130,7 +130,7 @@ const STG = g => [
 let LOGIN = 'guest';   // usuário digitado no painel; só aparece depois da autenticação
 /* lê uma linha digitada no terminal. secret: mostra só asteriscos e guarda apenas a contagem (o texto nunca é armazenado nem enviado).
    Devolve o texto (ou a contagem, se secret) no Enter; null se a janela fechar. */
-function readLine(w, el, {secret = false, max = 64, allow = /^[\x20-\x7e]$/, color} = {}){
+function readLine(w, el, {secret = false, max = 64, allow = /^[\x20-\x7e]$/, color, ctl} = {}){
   return new Promise(res => {
     let buf = '', n = 0; const txt = document.createElement('span'), cur = document.createElement('span');
     cur.className = 'ta-cur'; if (color) txt.style.color = color; el.append(txt, cur);
@@ -144,6 +144,7 @@ function readLine(w, el, {secret = false, max = 64, allow = /^[\x20-\x7e]$/, col
       if (e.key.length === 1){ e.preventDefault(); if (allow.test(e.key) && (secret ? n : buf.length) < max){ if (secret) n++; else buf += e.key; show(); } }
     };
     const chk = setInterval(() => { if (!w.alive()) done(null); }, 300);
+    if (ctl) ctl.cancel = () => done(null);
     document.addEventListener('keydown', on, true);
   });
 }
@@ -215,9 +216,7 @@ async function authorized(w, el){
   const t = typer(el, w);
   await t('<span class="g">access granted · encrypted session with gamma</span>', {speed: 8});
   el.insertAdjacentHTML('beforeend', `<span class="u">${LOGIN}@gamma</span>:~$ <span class="ta-cur"></span>`);
-  w.status('<span class="ok">GRANTED</span>secure session with gamma', GATEWAY_URL ? 'Enter to connect · Esc to close' : 'Esc to close');
-  if (GATEWAY_URL) document.addEventListener('keydown', function go(e){ if (!w.alive()){ document.removeEventListener('keydown', go); return; }
-    if (e.key === 'Enter' && !w.expired){ e.preventDefault(); location.assign(GATEWAY_URL); } });
+  w.status('<span class="ok">GRANTED</span>secure session with gamma', 'Esc to close');
 }
 
 
@@ -457,8 +456,8 @@ function favo3D(w, stage, svg){
    só depois da autenticação aparece login@gamma. Inatividade de 5 min: o túnel se desfaz e a rede se fecha. */
 const IDLE_MS = 5 * 60 * 1000;
 const GAMMA_ADDR = '••.•••.•••.•••';   // o IP real do gamma nunca vai para o código público
-async function p8(){
-  const w = frame('cortexpi', 'min'); win = w;
+async function p8(w0, again){
+  const w = w0 || frame('cortexpi', 'min'); win = w;
   w.body.innerHTML = `<div style="display:grid;grid-template-columns:1fr 330px;min-height:430px">
     <div style="display:flex;flex-direction:column"><div class="ta-txt hd" style="padding:14px 16px 0"></div>
       <div class="stage" style="position:relative;flex:1"><svg viewBox="0 0 420 330" aria-hidden="true"></svg></div></div>
@@ -468,14 +467,11 @@ async function p8(){
       <div class="ta-txt fin" style="border-top:1px solid ${C.panel};padding:10px 16px"></div></div></div>`;
   const svg = w.body.querySelector('svg'), stage = w.body.querySelector('.stage'), fin = w.body.querySelector('.fin');
   const lst = w.body.querySelector('.lst'), lg = w.body.querySelector('.lg'), t = typer(w.body.querySelector('.hd'), w);
-  const hd = w.body.querySelector('.hd');
-  /* aviso de abertura, estilo filme. O comando de conexão não é anunciado (help continua funcionando). */
-  const BANNER = '<span class="r"><b>■ RESTRICTED ACCESS ■</b></span>\n<span class="w">PRIVATE SYSTEM · AUTHORIZED PERSONNEL ONLY</span>\n<span class="d">Unauthorized access is prohibited.</span>\n';
-  const hint = () => hd.insertAdjacentHTML('beforeend', BANNER + '\n');
-  w.status('<span class="blk">RESTRICTED</span>cortexpi terminal · authorized personnel only', 'Esc to close');
-  await t(BANNER, {speed: 18, pause: 300}); if (!w.alive()) return;
+  const hd = w.body.querySelector('.hd'), hint = () => hd.insertAdjacentHTML('beforeend', '<span class="d">type</span> connect gamma-network <span class="d">· help</span>\n');
+  if (again){ hd.innerHTML = '<span class="d">$</span> reconnect'; w.title('connect gamma-network'); w.status('reconnecting…', ''); }
+  else { w.status('<span class="ok">READY</span>cortexpi terminal', 'Esc to close'); hint();
   for (let lines = 1;;){
-    if (lines > 6){ hd.innerHTML = ''; hint(); lines = 1; }
+    if (lines > 7){ hd.innerHTML = ''; hint(); lines = 1; }
     hd.insertAdjacentHTML('beforeend', '<span class="d">$</span> ');
     const raw = await readLine(w, hd, {max: 60}); if (raw == null) return;
     hd.appendChild(document.createTextNode('\n')); lines++;
@@ -489,7 +485,7 @@ async function p8(){
       : `<span class="w">${esc(c.split(' ')[0])}: command not found</span>`;
     hd.insertAdjacentHTML('beforeend', out + '\n'); lines++;
   }
-  hd.innerHTML = '<span class="d">$</span> connect gamma-network'; w.title('connect gamma-network'); w.status('connecting…', '');
+  hd.innerHTML = '<span class="d">$</span> connect gamma-network'; w.title('connect gamma-network'); w.status('connecting…', ''); }
   await wait(300);
   const hx = hexStage(svg, 210, 165, 115, true);
   hx.center('locating…', '', C.dim);
@@ -523,6 +519,32 @@ async function p8(){
   log('access granted · tunnel stabilized');
   await authorized(w, fin);
 
+  /* prompt da sessão: authenticate cloudflare abre o login real (Cloudflare Access → gamma) */
+  const GW = (typeof GATEWAY_URL !== 'undefined' && GATEWAY_URL) || '';
+  const say = html => fin.insertAdjacentHTML('beforeend', html + '\n');
+  const unknown = c => `<span class="w">${esc(c.split(' ')[0])}: command not found</span>`;
+  const norm = s => s.trim().replace(/\s+/g, ' ').toLowerCase();
+  const tidy = () => { while (fin.firstChild && fin.innerText.split('\n').length > 7) fin.removeChild(fin.firstChild); };   // rola: some a linha mais antiga
+  fin.innerHTML = '<span class="g">access granted · encrypted session with gamma</span>\n<span class="d">type</span> authenticate cloudflare <span class="d">· help</span>\n';
+  const ctl = {};
+  (async () => {
+    for (;;){
+      tidy(); fin.insertAdjacentHTML('beforeend', `<span class="u">${esc(LOGIN)}@gamma</span>:~$ `);
+      const raw = await readLine(w, fin, {max: 60, ctl}); if (raw == null) return;
+      fin.appendChild(document.createTextNode('\n')); const c = norm(raw);
+      if (!c) continue;
+      if (c === 'authenticate cloudflare'){
+        if (!GW){ say('<span class="w">authenticate: gateway not configured</span>'); continue; }
+        say('<span class="i">opening cloudflare authentication…</span>'); w.status('<span class="ok">AUTH</span>redirecting to cloudflare access', '');
+        await wait(700); location.assign(GW); return; }
+      if (c === 'reconnect'){ say('<span class="d">tunnel is up · nothing to reconnect</span>'); continue; }
+      if (c === 'help'){ say('<span class="d">commands: authenticate cloudflare · reconnect · clear · exit</span>'); continue; }
+      if (c === 'clear'){ fin.innerHTML = ''; continue; }
+      if (c === 'exit'){ w.close(); return; }
+      say(unknown(c));
+    }
+  })();
+
   /* inatividade: 5 min sem mexer no mouse/teclado e a sessão expira */
   let last = performance.now();
   const poke = () => { last = performance.now(); };
@@ -532,15 +554,16 @@ async function p8(){
   const mmss = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${String(s / 60 | 0).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
   while (w.alive()){
     const left = idle - (performance.now() - last);
-    w.status(null, `${GATEWAY_URL ? 'Enter to connect · ' : ''}idle timeout <b>${mmss(left)}</b> · Esc to close`);
+    w.status(null, `help · idle timeout <b>${mmss(left)}</b> · Esc to close`);
     if (left <= 0) break;
     await wait(250);
   }
   evs.forEach(e => document.removeEventListener(e, poke));
   if (!w.alive()) return;
+  if (ctl.cancel) ctl.cancel();
 
   /* o túnel se desfaz e a rede se fecha, do último estágio ao primeiro */
-  w.expired = true; w.status('<span class="blk">EXPIRED</span>idle timeout · closing tunnel…', ''); log('idle timeout · closing session'); log('tunnel collapsing…');
+  w.status('<span class="blk">EXPIRED</span>idle timeout · closing tunnel…', ''); log('idle timeout · closing session'); log('tunnel collapsing…');
   const closing = fx.collapse(6500);
   for (let i = 5; i >= 0; i--){ if (!w.alive()) return; await wait(1050);
     const r = rows[i]; r.style.color = C.line; r.querySelector('.sd').style.color = C.line; r.querySelector('.m').textContent = '×'; r.querySelector('.m').style.color = C.red;
@@ -551,8 +574,21 @@ async function p8(){
   fin.innerHTML = '';
   const tf = typer(fin, w);
   await tf('<span class="w">Connection to gamma closed (idle 5 min).</span>', {speed: 8});
-  fin.insertAdjacentHTML('beforeend', '<span class="d">$</span> <span class="ta-cur"></span>');
-  w.status('<span class="blk">CLOSED</span>session expired · tunnel and network closed', 'Esc to close');
+  fin.insertAdjacentHTML('beforeend', '<span class="d">type</span> reconnect <span class="d">· help</span>\n');
+  w.status('<span class="blk">CLOSED</span>session expired · tunnel and network closed', 'reconnect · Esc to close');
+  /* prompt depois da queda: reconnect refaz a conexão na mesma janela */
+  for (;;){
+    tidy(); fin.insertAdjacentHTML('beforeend', '<span class="d">$</span> ');
+    const raw = await readLine(w, fin, {max: 60}); if (raw == null) return;
+    fin.appendChild(document.createTextNode('\n')); const c = norm(raw);
+    if (!c) continue;
+    if (c === 'reconnect'){ say('<span class="i">reconnecting to gamma-network…</span>'); await wait(600); if (!w.alive()) return; return p8(w, true); }
+    if (c === 'authenticate cloudflare'){ say('<span class="w">authenticate: tunnel is down · type reconnect</span>'); continue; }
+    if (c === 'help'){ say('<span class="d">commands: reconnect · authenticate cloudflare · clear · exit</span>'); continue; }
+    if (c === 'clear'){ fin.innerHTML = ''; continue; }
+    if (c === 'exit'){ w.close(); return; }
+    say(unknown(c));
+  }
 }
 
 
