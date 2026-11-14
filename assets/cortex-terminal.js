@@ -9,7 +9,8 @@
 'use strict';
 const KEYS = ['c', 'p', 'i'];      // teclas que precisam estar pressionadas juntas
 const GATEWAY_URL = '';            // ex.: 'https://login.tailscale.com/admin/machines' (definir depois)
-const PROMPT = 'ssh lucas@estacao';
+const PROMPT = 'ssh lucas@gamma';
+const HOST = 'gamma', USER = 'lucas';
 
 const WINDOW_MS = 400;             // intervalo máximo entre as três teclas
 const down = new Set();
@@ -21,19 +22,22 @@ const isTyping = el => el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$
 function css(){
   const s = document.createElement('style');
   s.textContent = `
-.cxt-back{position:fixed;inset:0;z-index:9999;background:rgba(10,17,30,.55);display:flex;align-items:center;justify-content:center;padding:20px}
-.cxt{width:min(560px,100%);background:#0F1A2E;border:1px solid rgba(199,205,211,.28);box-shadow:0 30px 80px -20px rgba(0,0,0,.7);font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;color:#C7CDD3}
-.cxt-h{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid rgba(199,205,211,.14);font-size:12px;letter-spacing:.08em;color:#8E97A3}
-.cxt-h b{color:#F4F1EC;font-weight:600}
-.cxt-h i{display:inline-block;width:8px;height:8px;background:#B26E3B;margin-right:10px}
-.cxt-b{padding:16px 16px 12px;min-height:120px}
-.cxt-out{white-space:pre-wrap;margin-bottom:6px}
-.cxt-out .ok{color:#F4F1EC}.cxt-out .warn{color:#B26E3B}
-.cxt-l{display:flex;gap:10px;align-items:center}
-.cxt-l span{color:#B26E3B}
-.cxt-l input{flex:1;background:transparent;border:0;outline:0;color:#F4F1EC;font:inherit;caret-color:#B26E3B;padding:0}
-.cxt-f{padding:8px 14px;border-top:1px solid rgba(199,205,211,.14);font-size:12px;color:#6F7987}
-.cxt-f kbd{font:inherit;color:#C7CDD3;border:1px solid rgba(199,205,211,.28);padding:0 5px;margin-right:4px}`;
+/* Janela no tema do desktop gamma: XFCE + Nordic-darker (paleta Nord), fonte Inter / Monospace */
+.cxt-back{position:fixed;inset:0;z-index:9999;background:rgba(15,18,24,.55);display:flex;align-items:center;justify-content:center;padding:20px}
+.cxt{width:min(640px,100%);background:#2e3440;border:1px solid #1f232b;border-radius:4px;box-shadow:0 24px 70px -18px rgba(0,0,0,.75);overflow:hidden;transition:width .2s}
+.cxt.max{width:min(1100px,100%)}
+.cxt-h{position:relative;height:32px;background:#2b303c;display:flex;align-items:center;justify-content:center;font:13px Inter,system-ui,sans-serif;color:#d8dee9;user-select:none}
+.cxt-h .bt{position:absolute;right:2px;top:2px;display:flex}
+.cxt-h button{width:28px;height:28px;border:0;background:transparent;color:#d8dee9;font:15px/28px Inter,system-ui,sans-serif;cursor:pointer;padding:0;border-radius:3px}
+.cxt-h button:hover{background:#3b4252}
+.cxt-h button.x:hover{background:#bf616a;color:#2e3440}
+.cxt-b{padding:10px 12px 14px;min-height:190px;font:13.3px/1.45 "DejaVu Sans Mono","Liberation Mono",Menlo,Consolas,monospace;color:#d8dee9}
+.cxt-b ::selection{background:#4c566a}
+.cxt-out{white-space:pre-wrap}
+.cxt-out .c{color:#616e88}.cxt-out .i{color:#88c0d0}.cxt-out .w{color:#ebcb8b}.cxt-out .ok{color:#d8dee9}
+.cxt-l{display:flex;align-items:center;white-space:pre}
+.cxt-l .u{color:#a3be8c;font-weight:700}.cxt-l .p{color:#81a1c1;font-weight:700}
+.cxt-l input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:#d8dee9;font:inherit;caret-color:#d8dee9;padding:0}`;
   document.head.appendChild(s);
 }
 
@@ -45,10 +49,11 @@ function open(){
   box = document.createElement('div');
   box.className = 'cxt-back';
   box.innerHTML = `<div class="cxt" role="dialog" aria-modal="true" aria-labelledby="cxt-t">
-    <div class="cxt-h"><span id="cxt-t"><i></i><b>cortexpi</b> ~ acesso remoto</span><span>tty</span></div>
-    <div class="cxt-b"><div class="cxt-out" aria-live="polite"></div>
-      <label class="cxt-l"><span>$</span><input type="text" spellcheck="false" autocomplete="off" aria-label="Comando" value="${PROMPT}"></label></div>
-    <div class="cxt-f"><kbd>Enter</kbd>conectar · <kbd>Esc</kbd>fechar</div></div>`;
+    <div class="cxt-h"><span id="cxt-t">${USER}@${HOST}: ~</span>
+      <span class="bt"><button type="button" class="mn" aria-label="Minimizar">&#8211;</button><button type="button" class="mx" aria-label="Maximizar">&#9633;</button><button type="button" class="x" aria-label="Fechar">&#215;</button></span></div>
+    <div class="cxt-b"><div class="cxt-out" aria-live="polite"><span class="c"># acesso remoto ao desktop ${HOST} · Enter conecta · Esc fecha</span>
+</div>
+      <label class="cxt-l"><span class="u">${USER}@cortexpi</span>:<span class="p">~</span>$ <input type="text" spellcheck="false" autocomplete="off" aria-label="Comando" value="${PROMPT}"></label></div></div>`;
   document.body.appendChild(box);
   const input = box.querySelector('input');
   const openedAt = performance.now();
@@ -59,6 +64,9 @@ function open(){
     if (e.key === 'Enter') { e.preventDefault(); connect(input.value.trim()); }
   });
   box.addEventListener('mousedown', e => { if (e.target === box) close(); });
+  box.querySelector('.x').addEventListener('click', close);
+  box.querySelector('.mn').addEventListener('click', close);
+  box.querySelector('.mx').addEventListener('click', () => { box.querySelector('.cxt').classList.toggle('max'); input.focus(); });
 }
 
 function close(){
@@ -68,9 +76,9 @@ function close(){
 }
 
 function connect(cmd){
-  print('<span class="ok">$ ' + cmd.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</span>');
-  if (!GATEWAY_URL) { print('<span class="warn">destino ainda não configurado.</span>'); return; }
-  print('conectando ao portal seguro…');
+  print('<span class="ok"><span style="color:#a3be8c;font-weight:700">' + USER + '@cortexpi</span>:<span style="color:#81a1c1;font-weight:700">~</span>$ ' + cmd.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</span>');
+  if (!GATEWAY_URL) { print('<span class="w">ssh: portal de acesso ao ' + HOST + ' ainda não configurado.</span>'); return; }
+  print('<span class="i">conectando ao ' + HOST + ' pelo portal seguro…</span>');
   location.assign(GATEWAY_URL);
 }
 
